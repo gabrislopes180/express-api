@@ -1,17 +1,14 @@
 import express from "express";
+import { authTokens } from "../middleware/authMiddleware.js";
 
 import {
-  createUser,
-  getUsers,
-  getUserById,
-  updateUser,
-  deleteUser,
+  getUsersSuggestions,
+  getUsersBySearch,
+  getUserByName,
 } from "../controllers/userController.js";
 
-export const router = express.Router();
+export const userRouter = express.Router();
 
-router.get("/", getUsers);
-router.get("/:id", getUserById);
-router.post("/", createUser);
-router.post("/:id", deleteUser);
-router.put("/:id", updateUser);
+userRouter.get("/suggestions", authTokens, getUsersSuggestions);
+userRouter.get("/user-suggestion", authTokens, getUsersBySearch);
+userRouter.get("/:username", authTokens, getUserByName);

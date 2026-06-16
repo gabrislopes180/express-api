@@ -1,122 +1,145 @@
 import { User } from "../models/User.js";
+import { Follows } from "../models/Follows.js";
 
-export const getUsers = async (req, res) => {
+export const getUsersSuggestions = async (req, res) => {
   try {
-    const users = await User.find();
-    res.status(200).json({
+    const loggedInUserId = req.user.id;
+    console.log("ID que veio do Token:", req.user.id);
+    const loggedInUser = await User.findById(loggedInUserId);
+
+    if (!loggedInUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Usuário não encontrado.",
+      });
+    }
+
+    const suggestions = await User.find({
+      _id: { $ne: loggedInUserId },
+    }).select("-password");
+
+    return res.status(200).json({ data: suggestions });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno do servidor.",
+    });
+  }
+};
+
+export const getUsersBySearch = async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username?.trim()) {
+      return res.status(200).json({
+        success: true,
+        users: [],
+      });
+    }
+
+    const users = await User.find({
+      username: {
+        $regex: username,
+        $options: "i",
+      },
+    })
+      .select("_id username profilePicture")
+      .limit(10);
+
+    return res.status(200).json({
       success: true,
-      message: "Users fetched successfully.",
       users,
     });
-  } catch (err) {
-    res.status(500).json({
+  } catch (error) {
+    return res.status(500).json({
       success: false,
-      message: "Failed to fetch users.",
-      error: err.message,
+      message: error.message,
     });
   }
 };
 
-export const getUserById = async (req, res) => {
+export const getUserByName = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const { username } = req.params;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
+    if (!username?.trim()) {
+      return res.status(200).json({
+        success: true,
+        user: null,
       });
     }
 
-    res.status(200).json({
+    const user = await User.findOne({
+      username: {
+        $regex: username,
+        $options: "i",
+      },
+    }).select("-password");
+
+    return res.status(200).json({
       success: true,
-      message: "User fetched successfully.",
       user,
     });
-  } catch (err) {
-    res.status(500).json({
+  } catch (error) {
+    return res.status(500).json({
       success: false,
-      message: "Failed to fetch user.",
-      error: err.message,
+      message: error.message,
     });
   }
 };
 
-export const createUser = async (req, res) => {
+export const followUser = async (req, res) => {
   try {
-    const { name, age, role } = req.body;
+    const loggedInUserId = req.user.id;
+    const { userIdToFollow } = req.params;
 
-    if (!name || !age || !role) {
+    // Find the user to follow
+    const userToFollow = await User.findById(userIdToFollow);
+    if (!userToFollow) {
+      return res.status(404).json({
+        success: false,
+        message: "Usuário não encontrado.",
+      });
+    }
+
+    // Check if the user is already being followed
+    if (loggedInUser.following.includes(userIdToFollow)) {
       return res.status(400).json({
         success: false,
-        message: "Name, age, and role are required.",
+        message: "Você já está seguindo este usuário.",
       });
     }
 
-    const newUser = new User({ name, age, role });
-    await newUser.save();
+    // Add the user to the following list
+    const follow = await Follows.create({
+      followId: crypto.randomUUID(),
+      followerId: loggedInUserId,
+      followingId: userIdToFollow,
+    });
 
-    res.status(201).json({
+    loggedInUser.following.push(userIdToFollow);
+    await loggedInUser.save();
+
+    const status = {
+      followedBy: loggedInUserId.following.includes(userIdToFollow),
+      following: true,
+      id: follow._id,
+      followedUser: {
+        _id: userToFollow._id,
+        username: userToFollow.username,
+      },
+    };
+
+    return res.status(200).json({
       success: true,
-      message: "User created successfully.",
-      user: newUser,
+      message: `Você começou a seguir ${userToFollow.username}`,
+      status,
     });
-  } catch (err) {
-    res.status(400).json({
+  } catch (error) {
+    return res.status(500).json({
       success: false,
-      message: "failed to create User",
-      error: err.message,
-    });
-  }
-};
-
-export const updateUser = async (req, res) => {
-  try {
-    const userUpdated = await User.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-
-    if (!userUpdated) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found to update.",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "User updated successfully.",
-      userUpdated,
-    });
-  } catch (err) {
-    res.status(400).json({
-      success: false,
-      message: "Failed to update user.",
-      error: err.message,
-    });
-  }
-};
-
-export const deleteUser = async (req, res) => {
-  try {
-    const deletedUser = await User.findByIdAndDelete(req.params.id);
-
-    if (!deletedUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "User deleted successfully.",
-    });
-  } catch (err) {
-    res.status(400).json({
-      success: false,
-      message: "Failed to delete user.",
-      error: err.message,
+      message: error.message,
     });
   }
 };
